@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chatbot - Seq2Seq + Attention</title>
+    <style>
+        :root {
+            --bg: #f0f2f5; --card: #fff; --text: #1a1a2e; --text2: #666;
+            --primary: #667eea; --primary2: #764ba2; --accent: #00d2ff;
+            --bot-bg: #fff; --user-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --border: #e8e8e8; --shadow: rgba(0,0,0,0.08);
+            --thinking-bg: #f8f9ff; --thinking-border: #e0e4f0;
+        }
+        .dark {
+            --bg: #1a1a2e; --card: #16213e; --text: #e0e0e0; --text2: #a0a0b0;
+            --bot-bg: #1e2a4a; --border: #2a2a4a; --shadow: rgba(0,0,0,0.3);
+            --thinking-bg: #1a2040; --thinking-border: #2a3060;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, 'Microsoft YaHei', sans-serif;
+            background: var(--bg); height: 100vh;
+            display: flex; justify-content: center; align-items: center;
+            transition: background 0.3s;
+        }
+        .main { display: flex; gap: 16px; max-width: 1100px; width: 100%; padding: 16px; height: 92vh; }
+        .chat-box {
+            flex: 1; background: var(--card); border-radius: 16px;
+            box-shadow: 0 8px 32px var(--shadow); display: flex; flex-direction: column;
+            overflow: hidden; transition: background 0.3s;
+        }
+        .side-panel {
+            width: 340px; background: var(--card); border-radius: 16px;
+            box-shadow: 0 8px 32px var(--shadow); display: flex; flex-direction: column;
+            overflow: hidden; transition: background 0.3s;
+        }
+        .header {
+            background: var(--user-bg); color: #fff; padding: 16px 20px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .header h2 { font-size: 16px; font-weight: 600; }
+        .header .sub { font-size: 11px; opacity: 0.85; margin-top: 2px; }
+        .header-actions { display: flex; gap: 8px; }
+        .header-actions button {
+            background: rgba(255,255,255,0.2); border: none; color: #fff;
+            width: 32px; height: 32px; border-radius: 8px; cursor: pointer;
+            font-size: 14px; transition: background 0.2s;
+        }
+        .header-actions button:hover { background: rgba(255,255,255,0.35); }
+        .messages { flex: 1; overflow-y: auto; padding: 16px; }
+        .msg { margin-bottom: 14px; display: flex; animation: fadeIn 0.3s; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } }
+        .msg.user { justify-content: flex-end; }
+        .msg .bubble {
+            max-width: 72%; padding: 10px 14px; border-radius: 14px;
+            font-size: 14px; line-height: 1.6; word-break: break-word; position: relative;
+        }
+        .msg.user .bubble { background: var(--user-bg); color: #fff; border-bottom-right-radius: 4px; }
+        .msg.bot .bubble { background: var(--bot-bg); color: var(--text); border-bottom-left-radius: 4px; box-shadow: 0 1px 4px var(--shadow); }
+        .msg .avatar {
+            width: 34px; height: 34px; border-radius: 50%; display: flex;
+            align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0;
+        }
+        .msg.user .avatar { margin-left: 8px; background: #e8eaf6; order: 1; }
+        .msg.bot .avatar { margin-right: 8px; background: #e8f5e9; }
+        .msg.user .bubble { order: 0; }
+        .msg-meta { font-size: 11px; color: var(--text2); margin-top: 4px; display: flex; gap: 8px; align-items: center; }
+        .msg.user .msg-meta { justify-content: flex-end; }
+        .msg-actions { display: flex; gap: 4px; margin-top: 4px; }
+        .msg-actions button {
+            background: none; border: 1px solid var(--border); color: var(--text2);
+            font-size: 11px; padding: 2px 8px; border-radius: 6px; cursor: pointer;
+        }
+        .msg-actions button:hover { border-color: var(--primary); color: var(--primary); }
+        .typing { display: none; padding: 8px 16px; }
+        .typing span {
+            display: inline-block; width: 8px; height: 8px; background: #aaa;
+            border-radius: 50%; margin: 0 2px; animation: bounce 1.4s infinite;
+        }
+        .typing span:nth-child(2) { animation-delay: -0.16s; }
+        .typing span:nth-child(3) { animation-delay: -0.32s; }
+        @keyframes bounce { 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }
+        .input-bar {
+            padding: 12px 16px; background: var(--card); border-top: 1px solid var(--border);
+            display: flex; gap: 8px;
+        }
+        .input-bar input {
+            flex: 1; padding: 10px 14px; border: 2px solid var(--border); border-radius: 20px;
+            font-size: 14px; outline: none; background: var(--card); color: var(--text);
+            transition: border 0.3s;
+        }
+        .input-bar input:focus { border-color: var(--primary); }
+        .input-bar button {
+            padding: 10px 20px; background: var(--user-bg); color: #fff; border: none;
+            border-radius: 20px; font-size: 14px; cursor: pointer; transition: transform 0.2s;
+        }
+        .input-bar button:hover { transform: scale(1.05); }
+        .suggestions {
+            padding: 8px 16px; display: flex; gap: 6px; flex-wrap: wrap;
+            border-top: 1px solid var(--border); background: var(--card);
+        }
+        .suggestions button {
+            background: var(--thinking-bg); border: 1px solid var(--border); color: var(--text2);
+            font-size: 12px; padding: 4px 12px; border-radius: 14px; cursor: pointer;
+            transition: all 0.2s;
+        }
+        .suggestions button:hover { border-color: var(--primary); color: var(--primary); background: #f0f0ff; }
+        .search-bar {
+            padding: 8px 16px; background: var(--card); border-bottom: 1px solid var(--border);
+            display: none;
+        }
+        .search-bar input {
+            width: 100%; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px;
+            font-size: 13px; outline: none; background: var(--bg); color: var(--text);
+        }
+        .search-bar input:focus { border-color: var(--primary); }
+        .stbar {
+            padding: 6px 16px; background: var(--card); border-top: 1px solid var(--border);
+            display: flex; gap: 16px; font-size: 11px; color: var(--text2);
+        }
+        .welcome { text-align: center; padding: 40px 20px; color: var(--text2); }
+        .welcome .icon { font-size: 48px; margin-bottom: 12px; }
+        .welcome p { font-size: 14px; line-height: 1.8; }
+        .panel-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff;
+            padding: 14px 16px; font-size: 14px; font-weight: 600;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .panel-tabs { display: flex; border-bottom: 1px solid var(--border); }
+        .panel-tabs button {
+            flex: 1; padding: 10px; background: none; border: none; border-bottom: 2px solid transparent;
+            color: var(--text2); font-size: 13px; cursor: pointer; transition: all 0.2s;
+        }
+        .panel-tabs button.active { border-bottom-color: var(--primary); color: var(--primary); font-weight: 600; }
+        .panel-content { flex: 1; overflow-y: auto; padding: 12px; }
+        .log-entry {
+            background: var(--thinking-bg); border: 1px solid var(--thinking-border);
+            border-radius: 10px; padding: 12px; margin-bottom: 10px; font-size: 12px;
+            animation: fadeIn 0.3s;
+        }
+        .log-entry .log-title { font-weight: 600; color: var(--primary); margin-bottom: 6px; display: flex; justify-content: space-between; }
+        .log-entry .log-row { display: flex; gap: 6px; margin-bottom: 4px; color: var(--text); }
+        .log-entry .log-label { color: var(--text2); min-width: 56px; }
+        .token-tag {
+            display: inline-block; background: #e8eaf6; color: #3949ab; padding: 1px 6px;
+            border-radius: 4px; font-size: 11px; margin: 1px 2px;
+        }
+        .token-tag.unk { background: #fce4ec; color: #c62828; }
+        .stat-card {
+            background: var(--thinking-bg); border: 1px solid var(--thinking-border);
+            border-radius: 10px; padding: 14px; margin-bottom: 10px;
+        }
+        .stat-card h4 { font-size: 13px; color: var(--primary); margin-bottom: 8px; }
+        .stat-row { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px; }
+        .stat-row .label { color: var(--text2); }
+        .stat-row .value { color: var(--text); font-weight: 600; }
+        .badge {
+            display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 10px;
+            font-weight: 600; margin-left: 4px;
+        }
+        .badge.ret { background: #e3f2fd; color: #1565c0; }
+        .badge.gen { background: #f3e5f5; color: #7b1fa2; }
+        .hi {
+            padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer;
+            display: flex; justify-content: space-between; align-items: center;
+            transition: background 0.2s;
+        }
+        .hi:hover { background: var(--thinking-bg); }
+        .hi .qt { font-size: 13px; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .hi .tm { font-size: 11px; color: var(--text2); margin-left: 8px; white-space: nowrap; }
+        .messages::-webkit-scrollbar, .panel-content::-webkit-scrollbar { width: 5px; }
+        .messages::-webkit-scrollbar-thumb, .panel-content::-webkit-scrollbar-thumb { background: #ccc; border-radius: 3px; }
+        .toast {
+            position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+            background: #333; color: #fff; padding: 8px 20px; border-radius: 20px;
+            font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; z-index: 999;
+        }
+        .toast.show { opacity: 1; }
+        @media (max-width: 860px) {
+            .side-panel { display: none; }
+            .main { padding: 8px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="main">
+        <div class="chat-box">
+            <div class="header">
+                <div><h2>AI 聊天机器人</h2><div class="sub">Seq2Seq + Luong Attention + Beam Search</div></div>
+                <div class="header-actions">
+                    <button onclick="toggleDark()" title="深色模式">&#127769;</button>
+                    <button onclick="toggleSearch()" title="搜索">&#128269;</button>
+                    <button onclick="clearChat()" title="清空聊天">&#128465;</button>
+                    <button onclick="exportChat()" title="导出聊天记录">&#128190;</button>
+                </div>
+            </div>
+            <div class="search-bar" id="searchBar">
+                <input type="text" id="searchInput" placeholder="搜索对话..." oninput="searchMessages(this.value)">
+            </div>
+            <div class="messages" id="messages">
+                <div class="welcome" id="welcome">
+                    <div class="icon">&#128172;</div>
+                    <p>你好！我是基于Seq2Seq+Attention的智能聊天机器人<br>输入你想说的话开始对话吧~</p>
+                </div>
+            </div>
+            <div class="typing" id="typing"><span></span><span></span><span></span></div>
+            <div class="suggestions" id="suggestions">
+                <button onclick="quickSend('你好，你是谁？')">你好，你是谁？</button>
+                <button onclick="quickSend('什么是AI？')">AI是什么</button>
+                <button onclick="quickSend('怎么提高学习效率？')">学习效率</button>
+                <button onclick="quickSend('推荐一本书')">推荐书籍</button>
+                <button onclick="quickSend('讲个笑话')">讲笑话</button>
+                <button onclick="quickSend('怎么缓解焦虑？')">缓解焦虑</button>
+            </div>
+            <div class="stbar">
+                <span id="msgCount">消息: 0</span>
+                <span id="avgTime">平均响应: -</span>
+                <span id="retrievalRate">检索率: -</span>
+            </div>
+            <div class="input-bar">
+                <input type="text" id="userInput" placeholder="输入消息..." autocomplete="off" onkeydown="if(event.key==='Enter')sendMessage()">
+                <button onclick="sendMessage()">发送</button>
+            </div>
+        </div>
+        <div class="side-panel">
+            <div class="panel-header">&#129504; 思考日志 & 统计</div>
+            <div class="panel-tabs">
+                <button class="active" onclick="switchTab('thinking',this)">思考过程</button>
+                <button onclick="switchTab('stats',this)">模型信息</button>
+                <button onclick="switchTab('history',this)">历史问题</button>
+            </div>
+            <div class="panel-content" id="thinking-panel">
+                <div style="text-align:center;color:var(--text2);padding:30px 10px;font-size:13px;">发送消息后，这里会显示机器人的思考过程</div>
+            </div>
+            <div class="panel-content" id="stats-panel" style="display:none;"></div>
+            <div class="panel-content" id="history-panel" style="display:none;"></div>
+        </div>
+    </div>
+    <div class="toast" id="toast"></div>
+
+    <script>
+        const messagesDiv = document.getElementById('messages');
+        const userInput = document.getElementById('userInput');
+        const typingDiv = document.getElementById('typing');
+        const thinkingPanel = document.getElementById('thinking-panel');
+        const historyPanel = document.getElementById('history-panel');
+        const statsPanel = document.getElementById('stats-panel');
+        let welcomeRemoved = false;
+        let chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
+        let questionHistory = JSON.parse(localStorage.getItem('questionHistory') || '[]');
+        let bookmarks = JSON.parse(localStorage.getItem('bookmarks') || '[]');
+        let responseTimes = [];
+        let retrievalCount = 0;
+        let totalResponses = 0;
+        let historyIdx = -1;
+
+        function saveHistory() {
+            localStorage.setItem('chatHistory', JSON.stringify(chatHistory));
+            localStorage.setItem('questionHistory', JSON.stringify(questionHistory));
+            localStorage.setItem('bookmarks', JSON.stringify(bookmarks));
+        }
+        function updateStats() {
+            const mc = document.getElementById('msgCount');
+            if (mc) mc.textContent = '\u6d88\u606f: ' + chatHistory.length;
+            const at = document.getElementById('avgTime');
+            if (at && responseTimes.length > 0) {
+                const avg = Math.round(responseTimes.reduce((a,b)=>a+b,0)/responseTimes.length);
+                at.textContent = '\u5e73\u5747\u54cd\u5e94: ' + avg + 'ms';
+            }
+            const rr = document.getElementById('retrievalRate');
+            if (rr && totalResponses > 0) {
+                rr.textContent = '\u68c0\u7d22\u7387: ' + Math.round(retrievalCount/totalResponses*100) + '%';
+            }
+        }
+        function toggleBookmark(btn) {
+            const bubble = btn.closest('.msg').querySelector('.bubble');
+            const text = bubble.textContent;
+            const idx = bookmarks.indexOf(text);
+            if (idx >= 0) { bookmarks.splice(idx, 1); btn.textContent = '\u2606'; showToast('\u5df2\u53d6\u6d88\u6536\u85cf'); }
+            else { bookmarks.push(text); btn.textContent = '\u2b50'; showToast('\u5df2\u6536\u85cf'); }
+            saveHistory();
+        }
+        function toggleSearch() {
+            const bar = document.getElementById('searchBar');
+            bar.style.display = bar.style.display === 'none' ? 'block' : 'none';
+            if (bar.style.display === 'block') document.getElementById('searchInput').focus();
+            else { document.getElementById('searchInput').value = ''; clearSearch(); }
+        }
+        function searchMessages(kw) {
+            const msgs = messagesDiv.querySelectorAll('.msg');
+            if (!kw) { msgs.forEach(m => m.style.display = 'flex'); return; }
+            msgs.forEach(m => {
+                const t = m.querySelector('.bubble').textContent.toLowerCase();
+                m.style.display = t.includes(kw.toLowerCase()) ? 'flex' : 'none';
+            });
+        }
+        function clearSearch() { messagesDiv.querySelectorAll('.msg').forEach(m => m.style.display = 'flex'); }
+        function renderHistory() {
+            if (questionHistory.length === 0) {
+                historyPanel.innerHTML = '<div style="text-align:center;color:var(--text2);padding:30px;font-size:12px;">\u6682\u65e0\u5386\u53f2\u95ee\u9898</div>';
+                return;
+            }
+            historyPanel.innerHTML = questionHistory.map(item =>
+                '<div class="hi" onclick="quickSend(this.querySelector(\'.qt\').textContent)"><span class="qt">'+item.q+'</span><span class="tm">'+item.time+'</span></div>'
+            ).join('');
+        }
+        function removeWelcome() {
+            if (!welcomeRemoved) {
+                const w = document.getElementById('welcome');
+                if (w) w.remove();
+                welcomeRemoved = true;
+            }
+        }
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg; t.classList.add('show');
+            setTimeout(() => t.classList.remove('show'), 2000);
+        }
+        function now() {
+            return new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'});
+        }
+        function addMessage(text, isUser, thinking, skipSave) {
+            removeWelcome();
+            const div = document.createElement('div');
+            div.className = 'msg ' + (isUser ? 'user' : 'bot');
+            let badge = '';
+            if (!isUser && thinking) {
+                const src = thinking.retrieval_source || 'generation';
+                if (src.includes('retrieval')) badge = '<span class="badge ret">\u68c0\u7d22</span>';
+                else badge = '<span class="badge gen">\u751f\u6210</span>';
+            }
+            let meta = '<div class="msg-meta">' + now() + ' ' + badge + '</div>';
+            const isBm = bookmarks.includes(text);
+            let actions = '';
+            if (!isUser) {
+                actions = '<div class="msg-actions"><button onclick="copyText(this)">\u590d\u5236</button><button onclick="toggleBookmark(this)">' + (isBm ? '\u2b50' : '\u2606') + '</button></div>';
+            }
+            div.innerHTML = '<div class="bubble">' + text + '</div><div class="avatar">' + (isUser ? '&#128100;' : '&#129302;') + '</div>';
+            if (!isUser) {
+                const extra = document.createElement('div');
+                extra.style.cssText = 'order:0;max-width:72%;';
+                extra.innerHTML = meta + actions;
+                div.appendChild(extra);
+            } else {
+                div.innerHTML += meta;
+            }
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            if (!skipSave) {
+                chatHistory.push({role: isUser ? 'user' : 'bot', text: text, time: now(), thinking: thinking || null});
+                saveHistory();
+            }
+            updateStats();
+        }
+        function addThinkingLog(thinking, userMsg) {
+            if (!thinking || !thinking.tokens || thinking.tokens.length === 0) return;
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            const unkColor = thinking.unknown_count > 0 ? 'color:#c62828;' : 'color:#2e7d32;';
+            let tokenHtml = thinking.tokens.map(t => {
+                const isUnk = thinking.unknown_words.includes(t);
+                return '<span class="token-tag' + (isUnk ? ' unk' : '') + '">' + t + '</span>';
+            }).join('');
+            let replyHtml = thinking.reply_tokens.map(t => '<span class="token-tag">' + t + '</span>').join('');
+            entry.innerHTML = '<div class="log-title"><span>&#128221; ' + userMsg.substring(0,20) + '</span><span style="font-weight:400;color:var(--text2);">' + thinking.inference_time + 'ms</span></div>' +
+                '<div class="log-row"><span class="log-label">\u5206\u8bcd:</span><div>' + tokenHtml + '</div></div>' +
+                '<div class="log-row"><span class="log-label">\u8bcdID:</span><span style="font-size:11px;color:var(--text2);">[' + thinking.token_ids.join(', ') + ']</span></div>' +
+                '<div class="log-row"><span class="log-label">\u89e3\u7801:</span><span>' + thinking.method + '</span></div>' +
+                '<div class="log-row"><span class="log-label">\u8f93\u51fa:</span><div>' + replyHtml + '</div></div>' +
+                '<div class="log-row"><span class="log-label">\u672a\u77e5:</span><span style="' + unkColor + '">' + thinking.unknown_count + '\u4e2a ' + (thinking.unknown_words.length > 0 ? '(' + thinking.unknown_words.join(', ') + ')' : '\u2713') + '</span></div>' +
+                '<div class="log-row"><span class="log-label">\u7ef4\u5ea6:</span><span>\u8f93\u5165' + thinking.input_length + '\u2192\u8f93\u51fa' + thinking.output_length + ' \u00b7 \u8bcd\u8868' + thinking.vocab_size + '</span></div>' +
+                '<div class="log-row"><span class="log-label">\u68c0\u7d22:</span><span>score=' + (thinking.retrieval_score || 0) + ' (' + (thinking.retrieval_source || "none") + ')</span></div>';
+            thinkingPanel.insertBefore(entry, thinkingPanel.firstChild);
+            if (thinkingPanel.children.length > 20) thinkingPanel.removeChild(thinkingPanel.lastChild);
+        }
+        async function sendMessage() {
+            const text = userInput.value.trim();
+            if (!text) return;
+            addMessage(text, true);
+            if (!questionHistory.find(h => h.q === text)) {
+                questionHistory.unshift({q: text, time: now()});
+                if (questionHistory.length > 50) questionHistory.pop();
+                saveHistory();
+            }
+            userInput.value = '';
+            historyIdx = -1;
+            const startTime = Date.now();
+            typingDiv.style.display = 'block';
+            try {
+                const resp = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: text})
+                });
+                const data = await resp.json();
+                const elapsed = Date.now() - startTime;
+                typingDiv.style.display = 'none';
+                addMessage(data.reply, false, data.thinking);
+                addThinkingLog(data.thinking, text);
+                responseTimes.push(elapsed);
+                totalResponses++;
+                if (data.thinking && data.thinking.retrieval_source && data.thinking.retrieval_source.includes('retrieval')) {
+                    retrievalCount++;
+                }
+                updateStats();
+            } catch (e) {
+                typingDiv.style.display = 'none';
+                addMessage('\u8fde\u63a5\u51fa\u9519\uff0c\u8bf7\u68c0\u67e5\u670d\u52a1\u662f\u5426\u542f\u52a8', false);
+            }
+        }
+        function quickSend(text) {
+            userInput.value = text;
+            sendMessage();
+        }
+        function copyText(btn) {
+            const bubble = btn.closest('.msg').querySelector('.bubble');
+            navigator.clipboard.writeText(bubble.textContent).then(() => showToast('\u5df2\u590d\u5236'));
+        }
+        function toggleDark() {
+            document.body.classList.toggle('dark');
+            localStorage.setItem('darkMode', document.body.classList.contains('dark'));
+        }
+        function clearChat() {
+            if (!confirm('\u786e\u5b9a\u8981\u6e05\u7a7a\u6240\u6709\u5bf9\u8bdd\u5417\uff1f')) return;
+            chatHistory = [];
+            saveHistory();
+            messagesDiv.innerHTML = '<div class="welcome" id="welcome"><div class="icon">&#128172;</div><p>\u5bf9\u8bdd\u5df2\u6e05\u7a7a\uff0c\u8bf7\u8f93\u5165\u65b0\u7684\u6d88\u606f\u5f00\u59cb\u5bf9\u8bdd~</p></div>';
+            welcomeRemoved = false;
+            showToast('\u5df2\u6e05\u7a7a\u5bf9\u8bdd');
+        }
+        function exportChat() {
+            if (chatHistory.length === 0) { showToast('\u6ca1\u6709\u5bf9\u8bdd\u8bb0\u5f55'); return; }
+            let text = chatHistory.map(m => (m.role==='user' ? '\u4f60: ' : '\u673a\u5668\u4eba: ') + m.text).join('\n');
+            const blob = new Blob([text], {type: 'text/plain;charset=utf-8'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'chat_' + new Date().toISOString().slice(0,10) + '.txt';
+            a.click();
+            showToast('\u5df2\u5bfc\u51fa\u5bf9\u8bdd\u8bb0\u5f55');
+        }
+        function switchTab(tab, btn) {
+            document.querySelectorAll('.panel-tabs button').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            document.getElementById('thinking-panel').style.display = tab === 'thinking' ? 'block' : 'none';
+            document.getElementById('stats-panel').style.display = tab === 'stats' ? 'block' : 'none';
+            document.getElementById('history-panel').style.display = tab === 'history' ? 'block' : 'none';
+            if (tab === 'history') renderHistory();
+        }
+        function formatParams(n) {
+            if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+            if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+            return n.toString();
+        }
+        async function loadStats() {
+            try {
+                const resp = await fetch('/api/stats');
+                const data = await resp.json();
+                if (statsPanel && data) {
+                    statsPanel.innerHTML = `
+                        <div class="stat-card">
+                            <h4>&#128202; \u6a21\u578b\u67b6\u6784</h4>
+                            <div class="stat-row"><span class="label">\u6a21\u578b\u7c7b\u578b</span><span class="value">Seq2Seq + Attention</span></div>
+                            <div class="stat-row"><span class="label">\u7f16\u7801\u5668</span><span class="value">LSTM ${data.num_layers || 2}\u5c42</span></div>
+                            <div class="stat-row"><span class="label">\u89e3\u7801\u5668</span><span class="value">LSTM ${data.num_layers || 2}\u5c42 + Luong</span></div>
+                            <div class="stat-row"><span class="label">\u89e3\u7801\u7b56\u7565</span><span class="value">Beam Search (k=${data.beam_size || 3})</span></div>
+                        </div>
+                        <div class="stat-card">
+                            <h4>&#128230; \u6a21\u578b\u53c2\u6570</h4>
+                            <div class="stat-row"><span class="label">\u5d4c\u5165\u7ef4\u5ea6</span><span class="value">${data.emb_size || 128}</span></div>
+                            <div class="stat-row"><span class="label">\u9690\u85cf\u5c42\u7ef4\u5ea6</span><span class="value">${data.hidden_size || 192}</span></div>
+                            <div class="stat-row"><span class="label">\u603b\u53c2\u6570\u91cf</span><span class="value">${formatParams(data.total_params || 0)}</span></div>
+                            <div class="stat-row"><span class="label">\u53ef\u8bad\u7ec3\u53c2\u6570</span><span class="value">${formatParams(data.trainable_params || 0)}</span></div>
+                        </div>
+                        <div class="stat-card">
+                            <h4>&#128218; \u8bcd\u5178\u4e0e\u8bed\u6599</h4>
+                            <div class="stat-row"><span class="label">\u8bcd\u8868\u5927\u5c0f</span><span class="value">${(data.vocab_size || 0).toLocaleString()} \u8bcd</span></div>
+                            <div class="stat-row"><span class="label">\u68c0\u7d22\u8bed\u6599</span><span class="value">${(data.retrieval_size || 0).toLocaleString()} \u5bf9</span></div>
+                            <div class="stat-row"><span class="label">\u672a\u77e5\u8bcd\u6807\u8bb0</span><span class="value">_UNK</span></div>
+                            <div class="stat-row"><span class="label">\u5206\u8bcd\u5de5\u5177</span><span class="value">jieba</span></div>
+                        </div>
+                        <div class="stat-card">
+                            <h4>&#128187; \u8fd0\u884c\u73af\u5883</h4>
+                            <div class="stat-row"><span class="label">\u8bbe\u5907</span><span class="value">${data.device || 'CPU'}</span></div>
+                            <div class="stat-row"><span class="label">\u5bf9\u8bdd\u6b21\u6570</span><span class="value">${data.chat_count || 0}</span></div>
+                            <div class="stat-row"><span class="label">\u8bcd\u5411\u91cf</span><span class="value">Word2Vec</span></div>
+                            <div class="stat-row"><span class="label">\u6ce8\u610f\u529b</span><span class="value">Luong Attention</span></div>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                if (statsPanel) {
+                    statsPanel.innerHTML = '<div style="text-align:center;color:var(--text2);padding:30px;">\u52a0\u8f7d\u5931\u8d25</div>';
+                }
+            }
+        }
+        userInput.addEventListener('keydown', function(e) {
+            if (e.key === 'ArrowUp' && questionHistory.length > 0) {
+                historyIdx = Math.min(historyIdx + 1, questionHistory.length - 1);
+                userInput.value = questionHistory[historyIdx].q;
+            } else if (e.key === 'ArrowDown') {
+                historyIdx = Math.max(historyIdx - 1, -1);
+                userInput.value = historyIdx >= 0 ? questionHistory[historyIdx].q : '';
+            }
+        });
+        document.addEventListener('keydown', function(e) {
+            if (e.ctrlKey && e.key === 'k') { e.preventDefault(); toggleSearch(); }
+            if (e.ctrlKey && e.key === 'd') { e.preventDefault(); toggleDark(); }
+        });
+        if (localStorage.getItem('darkMode') === 'true') { document.body.classList.add('dark'); }
+        if (chatHistory.length > 0) { chatHistory.forEach(m => addMessage(m.text, m.role === 'user', m.thinking, true)); }
+        loadStats();
+    </script>
+</body>
+</html>
