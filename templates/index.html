@@ -304,9 +304,21 @@
                 historyPanel.innerHTML = '<div style="text-align:center;color:var(--text2);padding:30px;font-size:12px;">\u6682\u65e0\u5386\u53f2\u95ee\u9898</div>';
                 return;
             }
-            historyPanel.innerHTML = questionHistory.map(item =>
-                '<div class="hi" onclick="quickSend(this.querySelector(\'.qt\').textContent)"><span class="qt">'+item.q+'</span><span class="tm">'+item.time+'</span></div>'
+            historyPanel.innerHTML = '<div style="text-align:right;margin-bottom:8px;"><button onclick="clearHistory()" style="padding:4px 10px;font-size:11px;border:1px solid #ef5350;border-radius:6px;background:none;color:#ef5350;cursor:pointer;">\u6e05\u7a7a\u5386\u53f2</button></div>' + questionHistory.map((item, idx) =>
+                '<div class="hi"><span class="qt" onclick="quickSend(this.textContent)">'+item.q+'</span><span class="tm">'+item.time+'</span><button onclick="event.stopPropagation();removeHistory('+idx+')" style="margin-left:6px;padding:2px 6px;font-size:10px;border:1px solid #ef5350;border-radius:4px;background:none;color:#ef5350;cursor:pointer;">\u00d7</button></div>'
             ).join('');
+        }
+        function removeHistory(idx) {
+            questionHistory.splice(idx, 1);
+            saveHistory();
+            renderHistory();
+        }
+        function clearHistory() {
+            if (!confirm('\u786e\u5b9a\u8981\u6e05\u7a7a\u6240\u6709\u5386\u53f2\u95ee\u9898\u5417\uff1f')) return;
+            questionHistory = [];
+            saveHistory();
+            renderHistory();
+            showToast('\u5df2\u6e05\u7a7a\u5386\u53f2');
         }
         function renderBookmarks() {
             if (bookmarks.length === 0) {
