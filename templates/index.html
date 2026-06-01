@@ -229,12 +229,14 @@
                 <button class="active" onclick="switchTab('thinking',this)">思考过程</button>
                 <button onclick="switchTab('stats',this)">模型信息</button>
                 <button onclick="switchTab('history',this)">历史问题</button>
+                <button onclick="switchTab('bookmarks',this)">收藏</button>
             </div>
             <div class="panel-content" id="thinking-panel">
                 <div style="text-align:center;color:var(--text2);padding:30px 10px;font-size:13px;">发送消息后，这里会显示机器人的思考过程</div>
             </div>
             <div class="panel-content" id="stats-panel" style="display:none;"></div>
             <div class="panel-content" id="history-panel" style="display:none;"></div>
+            <div class="panel-content" id="bookmarks-panel" style="display:none;"></div>
         </div>
     </div>
     <div class="toast" id="toast"></div>
@@ -246,6 +248,7 @@
         const thinkingPanel = document.getElementById('thinking-panel');
         const historyPanel = document.getElementById('history-panel');
         const statsPanel = document.getElementById('stats-panel');
+        const bookmarksPanel = document.getElementById('bookmarks-panel');
         let welcomeRemoved = false;
         let chatHistory = JSON.parse(localStorage.getItem('chatHistory') || '[]');
         let questionHistory = JSON.parse(localStorage.getItem('questionHistory') || '[]');
@@ -304,6 +307,29 @@
             historyPanel.innerHTML = questionHistory.map(item =>
                 '<div class="hi" onclick="quickSend(this.querySelector(\'.qt\').textContent)"><span class="qt">'+item.q+'</span><span class="tm">'+item.time+'</span></div>'
             ).join('');
+        }
+        function renderBookmarks() {
+            if (bookmarks.length === 0) {
+                bookmarksPanel.innerHTML = '<div style="text-align:center;color:var(--text2);padding:30px;font-size:12px;">\u6682\u65e0\u6536\u85cf\u5185\u5bb9</div>';
+                return;
+            }
+            bookmarksPanel.innerHTML = bookmarks.map((text, idx) =>
+                '<div class="hi" style="flex-direction:column;align-items:flex-start;">' +
+                '<span class="qt" style="white-space:normal;margin-bottom:6px;">' + text.substring(0, 60) + (text.length > 60 ? '...' : '') + '</span>' +
+                '<div style="display:flex;gap:6px;width:100%;">' +
+                '<button onclick="copyBookmark(' + idx + ')" style="flex:1;padding:4px 8px;font-size:11px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--text2);cursor:pointer;">\u590d\u5236</button>' +
+                '<button onclick="removeBookmark(' + idx + ')" style="flex:1;padding:4px 8px;font-size:11px;border:1px solid #ef5350;border-radius:6px;background:none;color:#ef5350;cursor:pointer;">\u5220\u9664</button>' +
+                '</div></div>'
+            ).join('');
+        }
+        function copyBookmark(idx) {
+            navigator.clipboard.writeText(bookmarks[idx]).then(() => showToast('\u5df2\u590d\u5236'));
+        }
+        function removeBookmark(idx) {
+            bookmarks.splice(idx, 1);
+            saveHistory();
+            renderBookmarks();
+            showToast('\u5df2\u5220\u9664\u6536\u85cf');
         }
         function removeWelcome() {
             if (!welcomeRemoved) {
@@ -445,7 +471,9 @@
             document.getElementById('thinking-panel').style.display = tab === 'thinking' ? 'block' : 'none';
             document.getElementById('stats-panel').style.display = tab === 'stats' ? 'block' : 'none';
             document.getElementById('history-panel').style.display = tab === 'history' ? 'block' : 'none';
+            document.getElementById('bookmarks-panel').style.display = tab === 'bookmarks' ? 'block' : 'none';
             if (tab === 'history') renderHistory();
+            if (tab === 'bookmarks') renderBookmarks();
         }
         function formatParams(n) {
             if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
